@@ -1,10 +1,10 @@
-import json
-import redis.asyncio as redis
 from typing import Dict, Any, Optional
-import os
 
-# Initialize Redis client (typically configured centrally).
-redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+# Reuse the app's shared Redis client - it already degrades gracefully
+# (returns None/False instead of raising) when Redis is unavailable, so a
+# cache outage here falls through to a normal calculation instead of
+# failing the request.
+from app.core.redis_client import redis_client
 
 async def get_revenue_summary(
     property_id: str,
@@ -24,10 +24,10 @@ async def get_revenue_summary(
     else:
         cache_key = f"revenue:{tenant_id}:{property_id}"
 
-    # Try to get from cache
+    # Try to get from cache (returns None on a cache miss or if Redis is unavailable)
     cached = await redis_client.get(cache_key)
     if cached:
-        return json.loads(cached)
+        return cached
 
     if month is not None and year is not None:
         from app.services.reservations import calculate_monthly_revenue
@@ -46,7 +46,7 @@ async def get_revenue_summary(
 
         result = await calculate_total_revenue(property_id, tenant_id)
 
-    # Cache the result for 5 minutes
-    await redis_client.setex(cache_key, 300, json.dumps(result))
+    # Cache the result for 5 minutes (no-ops safely if Redis is unavailable)
+    await redis_client.set(cache_key, result, ttl=300)
 
     return result
