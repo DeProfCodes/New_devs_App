@@ -40,8 +40,9 @@ class FakeRedis:
     async def get(self, key):
         return self.store.get(key)
 
-    async def setex(self, key, ttl, value):
+    async def set(self, key, value, ttl=None):
         self.store[key] = value
+        return True
 
 
 class FakeRow:
